@@ -1,5 +1,6 @@
 using System;
 using Server.Items;
+using daat99;
 
 namespace Server.Engines.Craft
 {
@@ -109,13 +110,13 @@ namespace Server.Engines.Craft
             }
         }
 
-        public override CraftECA ECA
+        /*public override CraftECA ECA
         {
             get
             {
                 return CraftECA.FiftyPercentChanceMinusTenPercent;
             }
-        }
+        }*/
 
         public override void InitCraftList()
         {
@@ -252,25 +253,15 @@ namespace Server.Engines.Craft
 
             this.SetSubRes(typeof(Board), 1072643);
 
-
-            // Add every material you want the player to be able to choose from
-            // This will override the overridable material	TODO: Verify the required skill amount
-            this.AddSubRes(typeof(Board), 1072643, 00.0, 1044041, 1072652);
-            this.AddSubRes(typeof(OakBoard), 1072644, 65.0, 1044041, 1072652);
-            this.AddSubRes(typeof(AshBoard), 1072645, 80.0, 1044041, 1072652);
-            this.AddSubRes(typeof(YewBoard), 1072646, 95.0, 1044041, 1072652);
-            this.AddSubRes(typeof(HeartwoodBoard), 1072647, 100.0, 1044041, 1072652);
-            this.AddSubRes(typeof(BloodwoodBoard), 1072648, 100.0, 1044041, 1072652);
-            this.AddSubRes(typeof(FrostwoodBoard), 1072649, 100.0, 1044041, 1072652);
+            //daat99 OWLTR start - custom Wood
+            daat99.ResourceHelper.AddWoodResources(this);
+            //daat99 OWLTR end - custom Wood 
             #endregion
 
             this.MarkOption = true;
             this.Repair = Core.AOS;
 			this.CanEnhance = Core.ML;
 
-            //daat99 OWLTR start - custom wood
-            daat99.ResourceHelper.AddWoodResources(this);
-            //daat99 OWLTR end - custom wood 
         }
     }
 }

@@ -19,7 +19,7 @@ using Server.Spells.Ninjitsu;
 using Server.Spells.Second;
 using Server.Spells.Spellweaving;
 using Server.Targeting;
-using daat99;
+using Server.Spells.SkillMasteries;
 #endregion
 
 namespace Server.Spells
@@ -174,32 +174,17 @@ namespace Server.Spells
             if (target != null && RunedSashOfWarding.IsUnderEffects(target, WardingEffect.SpellDamage))
                 sdiBonus -= 10;
 
-			if (m_Caster is PlayerMobile && m_Caster.Race == Race.Gargoyle)
-			{
-				double perc = ((double)m_Caster.Hits / (double)m_Caster.HitsMax) * 100;
-
-				perc = 100 - perc;
-				perc /= 20;
-
-				if (perc > 4)
-					sdiBonus += 12;
-				else if (perc >= 3)
-					sdiBonus += 9;
-				else if (perc >= 2)
-					sdiBonus += 6;
-				else if (perc >= 1)
-					sdiBonus += 3;
-			}
+            sdiBonus -= Block.GetSpellReduction(target);
 
 			// PvP spell damage increase cap of 15% from an item’s magic property, 30% if spell school focused.
 			if (playerVsPlayer)
 			{
-			    if (SpellHelper.HasSpellMastery(m_Caster) && sdiBonus > 30)
+			    if (SpellHelper.HasSpellFocus(m_Caster, CastSkill) && sdiBonus > 30)
                 {
                     sdiBonus = 30;
                 }
 
-                if (!SpellHelper.HasSpellMastery(m_Caster) && sdiBonus > 15)
+                if (!SpellHelper.HasSpellFocus(m_Caster, CastSkill) && sdiBonus > 15)
                 {
                     sdiBonus = 15;
                 }
@@ -218,6 +203,13 @@ namespace Server.Spells
 			damage = AOS.Scale(damage, evalScale);
 
 			damage = AOS.Scale(damage, (int)(scalar * 100));
+
+            #region Skill Mastery
+            SkillMasterySpell spell = SkillMasterySpell.GetHarmfulSpell(Caster, typeof(TribulationSpell));
+
+            if (spell != null)
+                spell.AbsorbDamage(ref damage);
+            #endregion
 
 			return damage / 100;
 		}
@@ -371,10 +363,7 @@ namespace Server.Spells
 			{
 				return true;
 			}
-            //daat99 OWLTR start - use SpellCastersKey
-            if (OWLTROptionsManager.IsEnabled(OWLTROptionsManager.OPTIONS_ENUM.USE_STORAGE_RESOURCES) && MasterStorageUtils.ConsumePlayersStorageItems(m_Caster as PlayerMobile, m_Info.Reagents, m_Info.Amounts))
-                return true;
-            //daat99 OWLTR end - use SpellCastersKey
+
 			return false;
 		}
 
@@ -657,13 +646,24 @@ namespace Server.Spells
 			}
 		}
 
-		public virtual bool BlockedByHorrificBeast { get { return true; } }
+		public virtual bool BlockedByHorrificBeast 
+        { 
+            get 
+            {
+                if (TransformationSpellHelper.UnderTransformation(Caster, typeof(HorrificBeastSpell)) &&
+                    SpellHelper.HasSpellFocus(Caster, CastSkill))
+                    return false;
+
+                return true;
+            } 
+        }
+
 		public virtual bool BlockedByAnimalForm { get { return true; } }
 		public virtual bool BlocksMovement { get { return true; } }
 
 		public virtual bool CheckNextSpellTime { get { return !(m_Scroll is BaseWand); } }
 
-		public bool Cast()
+		public virtual bool Cast()
 		{
 			m_StartCastTime = Core.TickCount;
 
@@ -945,7 +945,7 @@ namespace Server.Spells
 			int fcMax = 4;
 
 			if (CastSkill == SkillName.Magery || CastSkill == SkillName.Necromancy ||
-				(CastSkill == SkillName.Chivalry && m_Caster.Skills[SkillName.Magery].Value >= 70.0 || m_Caster.Skills[SkillName.Mysticism].Value >= 70.0))
+                (CastSkill == SkillName.Chivalry && (m_Caster.Skills[SkillName.Magery].Value >= 70.0 || m_Caster.Skills[SkillName.Mysticism].Value >= 70.0)))
 			{
 				fcMax = 2;
 			}

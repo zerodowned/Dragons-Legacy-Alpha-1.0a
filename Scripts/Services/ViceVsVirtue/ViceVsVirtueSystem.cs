@@ -81,6 +81,7 @@ namespace Server.Engines.VvV
             if (ventry != null && ventry.Active)
             {
                 List<DamageEntry> list = victim.DamageEntries.OrderBy(d => -d.DamageGiven).ToList();
+                List<Mobile> handled = new List<Mobile>();
                 bool statloss = false;
 
                 for(int i = 0; i < list.Count; i++)
@@ -96,12 +97,14 @@ namespace Server.Engines.VvV
                     {
                         VvVPlayerEntry kentry = GetPlayerEntry<VvVPlayerEntry>(dam);
 
-                        if (kentry != null)
+                        if (kentry != null && !handled.Contains(dam))
                         {
                             if (i == 0)
                                 Battle.Update(ventry, kentry, UpdateType.Kill);
                             else
                                 Battle.Update(ventry, kentry, UpdateType.Assist);
+
+                            handled.Add(dam);
                         }
                     }
 
@@ -112,33 +115,28 @@ namespace Server.Engines.VvV
                 if (statloss)
                     Faction.ApplySkillLoss(victim);
 
-                list.Clear();
-                list.TrimExcess();
+                ColUtility.Free(list);
+                ColUtility.Free(handled);
             }
         }
 
-        public void TryAddGuild(Guild g)
+        public void AddPlayer(PlayerMobile pm)
         {
-            if (g == null)
+            if (pm == null || pm.Guild == null)
                 return;
 
-            foreach (PlayerMobile pm in g.Members.OfType<PlayerMobile>().Where(player => !player.Young))
-            {
-                VvVPlayerEntry entry = GetEntry(pm, true) as VvVPlayerEntry;
+            Guild g = pm.Guild as Guild;
+            VvVPlayerEntry entry = GetEntry(pm, true) as VvVPlayerEntry;
 
-                entry.Guild = g;
-                entry.Active = true;
+            entry.Guild = g;
+            entry.Active = true;
 
-                if (pm.NetState != null)
-                {
-                    pm.SendLocalizedMessage(1155564); // You have joined Vice vs Virtue!
-                    pm.SendLocalizedMessage(1063156, g.Name); // The guild information for ~1_val~ has been updated.
+            pm.SendLocalizedMessage(1155564); // You have joined Vice vs Virtue!
+            pm.SendLocalizedMessage(1063156, g.Name); // The guild information for ~1_val~ has been updated.
 
-                    CheckBattleStatus(pm);
-                }
-                else
-                    entry.PendingJoinMessage = true;
-            }
+            pm.ProcessDelta();
+
+            CheckBattleStatus(pm);
         }
 
         public bool IsResigning(PlayerMobile pm, Guild g)
@@ -148,27 +146,21 @@ namespace Server.Engines.VvV
             return entry != null && entry.Guild == g && entry.Resigning;
         }
 
-        public void ResignGuild(Guild g)
-        {
-            if (g == null)
-                return;
-
-            foreach (PlayerMobile pm in g.Members.OfType<PlayerMobile>())
-            {
-                OnRemovedFromGuild(pm);
-            }
-        }
-
-        public void OnRemovedFromGuild(Mobile m)
+        public void OnResign(Mobile m, bool quitguild = false)
         {
             VvVPlayerEntry entry = GetPlayerEntry<VvVPlayerEntry>(m as PlayerMobile);
 
-            if (entry != null)
+            if (entry != null && entry.Active && !entry.Resigning)
             {
                 if (m.AccessLevel == AccessLevel.Player)
                     entry.ResignExpiration = DateTime.UtcNow + TimeSpan.FromDays(3);
                 else
-                    entry.ResignExpiration = DateTime.UtcNow;
+                    entry.ResignExpiration = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+
+                entry.Guild = null;
+
+                if (quitguild)
+                    m.SendLocalizedMessage(1155580); // You have quit a guild while participating in Vice vs Virtue.  You will be freely attackable by members of Vice vs Virtue until your resignation period has ended!
             }
         }
 
@@ -183,19 +175,6 @@ namespace Server.Engines.VvV
                 entry.Active = false;
                 entry.ResignExpiration = DateTime.MinValue;
                 pm.Delta(MobileDelta.Noto);
-            }
-        }
-
-        public void CheckPendingJoin(PlayerMobile pm)
-        {
-            VvVPlayerEntry entry = GetPlayerEntry<VvVPlayerEntry>(pm);
-
-            if (entry != null && entry.PendingJoinMessage)
-            {
-                pm.SendLocalizedMessage(1155564); // You have joined Vice vs Virtue!
-                pm.SendLocalizedMessage(1063156, entry.Guild != null ? entry.Guild.Name : "your guild"); // The guild information for ~1_val~ has been updated.
-
-                entry.PendingJoinMessage = false;
             }
         }
 
@@ -217,7 +196,7 @@ namespace Server.Engines.VvV
             }
             else
             {
-                int count = EnemyGuildCount(pm);
+                int count = EnemyGuildCount();
 
                 if (count < 1)
                 {
@@ -234,16 +213,13 @@ namespace Server.Engines.VvV
             }
         }
 
-        public int EnemyGuildCount(Mobile exclude = null)
+        public int EnemyGuildCount()
         {
             List<Guild> guilds = new List<Guild>();
 
             foreach (NetState ns in NetState.Instances)
             {
                 Mobile m = ns.Mobile;
-
-                if (exclude != null && exclude == m)
-                    continue;
 
                 if (m != null)
                 {
@@ -273,7 +249,7 @@ namespace Server.Engines.VvV
             guilds.Clear();
             guilds.TrimExcess();
 
-            return count;
+            return count - 1;
         }
 
         public void SendVvVMessage(int cliloc, string args = "")
@@ -292,35 +268,6 @@ namespace Server.Engines.VvV
         public void SendVvVMessageTo(Mobile m, int cliloc, string args = "")
         {
             m.SendLocalizedMessage(cliloc, false, "[Guild][VvV] ", args, m is PlayerMobile ? ((PlayerMobile)m).GuildMessageHue : 0x34);
-        }
-
-        public void OnBattleEnd()
-        {
-            foreach (KeyValuePair<Guild, VvVGuildBattleStats> kvp in Battle.GuildStats)
-            {
-                Guild g = kvp.Key;
-
-                if (!GuildStats.ContainsKey(g))
-                    GuildStats[g] = new VvVGuildStats(g);
-
-                int score = (int)kvp.Value.Points;
-
-                GuildStats[g].Kills += kvp.Value.Kills;
-                GuildStats[g].ReturnedSigils += kvp.Value.ReturnedSigils;
-                GuildStats[g].Score += score;
-
-                List<Mobile> list = g.Members.Where(mob => mob.NetState != null && mob.Region.IsPartOf(Battle.Region)).ToList();
-
-                foreach (Mobile m in list)
-                {
-                    VvVPlayerEntry entry = GetPlayerEntry<VvVPlayerEntry>(m, true);
-
-                    if (entry != null)
-                    {
-                        entry.Score += score;
-                    }
-                }
-            }
         }
 
         private List<Item> VvVItems = new List<Item>();
@@ -370,7 +317,7 @@ namespace Server.Engines.VvV
             if (pm != null && Instance != null)
             {
                 Timer.DelayCall<PlayerMobile>(TimeSpan.FromSeconds(1), Instance.CheckResignation, pm);
-                Timer.DelayCall<PlayerMobile>(TimeSpan.FromSeconds(1), Instance.CheckPendingJoin, pm);
+                //Timer.DelayCall<PlayerMobile>(TimeSpan.FromSeconds(1), Instance.CheckPendingJoin, pm);
                 Timer.DelayCall<PlayerMobile>(TimeSpan.FromSeconds(2), Instance.CheckBattleStatus, pm);
             }
         }
@@ -385,7 +332,7 @@ namespace Server.Engines.VvV
             }
         }
 
-        public static bool IsVvV(Mobile m, bool checkpet = true)
+        public static bool IsVvV(Mobile m, bool checkpet = true, bool guildedonly = false)
         {
             if (m is BaseCreature && checkpet)
             {
@@ -395,10 +342,13 @@ namespace Server.Engines.VvV
 
             VvVPlayerEntry entry = Instance.GetPlayerEntry<VvVPlayerEntry>(m as PlayerMobile);
 
-            return entry != null && entry.Active;
+            if (entry == null)
+                return false;
+
+            return entry.Active && (!guildedonly || entry.Guild != null);
         }
 
-        public static bool IsVvV(Mobile m, out VvVPlayerEntry entry, bool checkpet = true)
+        public static bool IsVvV(Mobile m, out VvVPlayerEntry entry, bool checkpet = true, bool guildedonly = false)
         {
             if (m is BaseCreature && checkpet)
             {
@@ -411,7 +361,7 @@ namespace Server.Engines.VvV
             if (entry != null && !entry.Active)
                 entry = null;
 
-            return entry != null;
+            return entry.Active && (!guildedonly || entry.Guild != null);
         }
 
         public static bool IsEnemy(IDamageable from, IDamageable to)
@@ -446,7 +396,10 @@ namespace Server.Engines.VvV
             Guild fromguild = fromentry.Guild;
             Guild toguild = toentry.Guild;
 
-            return fromguild != null && toguild != null && fromguild != toguild && !fromguild.IsAlly(toguild);
+            if (toguild == null || fromguild == null)
+                return true;
+
+            return fromguild != toguild && !fromguild.IsAlly(toguild);
         }
 
         public static bool IsBattleRegion(Region r)
@@ -540,11 +493,12 @@ namespace Server.Engines.VvV
                 {
                     if (m is SilverTrader)
                     {
-                        eable.Free();
                         found = true;
                         break;
                     }
                 }
+
+                eable.Free();
 
                 if (!found)
                 {
@@ -567,7 +521,6 @@ namespace Server.Engines.VvV
         public int DisarmedTraps { get; set; }
         public int StolenSigils { get; set; }
 
-        public bool PendingJoinMessage { get; set; }
         public Guild Guild { get; set; }
 
         public bool Active
@@ -599,10 +552,9 @@ namespace Server.Engines.VvV
         public override void Serialize(GenericWriter writer)
         {
             base.Serialize(writer);
-            writer.Write(0);
+            writer.Write(1);
 
             writer.Write(Active);
-            writer.Write(PendingJoinMessage);
             writer.Write(Guild);
 
             writer.Write(Score);
@@ -621,7 +573,10 @@ namespace Server.Engines.VvV
             int version = reader.ReadInt();
 
             Active = reader.ReadBool();
-            PendingJoinMessage = reader.ReadBool();
+
+            if(version == 0)
+                reader.ReadBool();
+
             Guild = reader.ReadGuild() as Guild;
 
             Score = reader.ReadInt();

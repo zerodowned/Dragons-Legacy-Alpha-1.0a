@@ -44,6 +44,14 @@ namespace Server.Items
         PetCure,
         PetGreaterCure,
         #endregion
+		#region TOL Publish 93
+        Barrab,
+        Jukari,
+        Kurak,
+        Barako,
+        Urali,
+        Sakkhra,
+        #endregion
     }
 
     public abstract class BasePotion : Item, ICraftable, ICommodity

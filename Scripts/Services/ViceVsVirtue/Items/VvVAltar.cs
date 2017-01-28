@@ -229,7 +229,7 @@ namespace Server.Engines.VvV
             {
                 VvVPlayerEntry entry;
 
-                if (ViceVsVirtueSystem.IsVvV(m, out entry))
+                if (ViceVsVirtueSystem.IsVvV(m, out entry, false, true))
                 {
                     count++;
 
@@ -237,7 +237,7 @@ namespace Server.Engines.VvV
                     {
                         Guild g = OccupationTimer.Occupier;
 
-                        if (entry.Guild != g && !entry.Guild.IsAlly(g))
+                        if (g == null || (entry.Guild != g && !entry.Guild.IsAlly(g)))
                         {
                             Clear();
                             break;
@@ -246,13 +246,18 @@ namespace Server.Engines.VvV
                     else
                     {
                         this.OccupationTimer = new OccupyTimer(this, entry.Guild);
-                        this.OccupationTimer.Start();
                     }
                 }
             }
 
-            if (OccupationTimer != null && count == 0)
+            if (this.OccupationTimer != null && !this.OccupationTimer.Running && count > 0)
+            {
+                this.OccupationTimer.Start();
+            }
+            else if (OccupationTimer != null && count == 0)
+            {
                 Clear();
+            }
 
             eable.Free();
         }

@@ -1,5 +1,8 @@
 # [Dragons Legacy Alpha 1.0a]
 
+[![PayPayl donate button](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.me/DragonsLegacy)
+Help US support this project using Paypal
+
 This is a complete code from ServUO latest Repo Dated Dec. 17th 2016,
 
 All rights to the Original Code will be left in tacked, All modifications have been done by myself with the help of scripts i have found on ServUO as well as other sites, 
